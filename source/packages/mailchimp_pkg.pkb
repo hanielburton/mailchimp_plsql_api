@@ -46,7 +46,10 @@ begin
         , p_https_host  => g_https_host
     );
 
-    l_list_id := json_value(l_response, '$.id');
+    --l_list_id := json_value(l_response, '$.id');  --not usable in 11g
+    apex_json.parse(p_source => l_response); --first let APEX_JSON parse the clob
+
+    l_list_id := apex_json.get_varchar2(p_path => 'id'); --get value of id from API result
 
     logger.log('list id :'    , l_scope, l_list_id);
     logger.log('l_response : ', l_scope, l_response);
@@ -89,8 +92,10 @@ begin
                 , p_https_host  => g_https_host
             );
 
-    l_confirmation := json_value(l_response, '$.status');
+    --l_confirmation := json_value(l_response, '$.status');
+    apex_json.parse(p_source => l_response); --first let APEX_JSON parse the clob
     
+    l_confirmation := apex_json.get_varchar2(p_path => 'status');
 
     if l_confirmation = 'subscribed' then
         p_success := true;
@@ -122,7 +127,14 @@ begin
     logger.append_param(l_params, 'p_email', p_email);
     logger.log('START', l_scope, null, l_params);
 
-    select standard_hash(p_email, 'MD5')
+    /* not available in 11g
+    --select standard_hash(p_email, 'MD5')
+    --into l_subscriber_hash
+    --from dual;
+    */
+    --requires oos_util_crypto package, but is compatible with an db version.
+    
+    select oos_util_crypto.hash_str(p_email, 2)
     into l_subscriber_hash
     from dual;
 
@@ -177,17 +189,24 @@ begin
                 , p_https_host  => g_https_host
             );
 
-  l_total_items := json_value(l_response, '$.total_items');
+  --l_total_items := json_value(l_response, '$.total_items');
+  apex_json.parse(p_source => l_response); --first let APEX_JSON parse the clob
+  l_total_items := apex_json.get_number(p_path => 'total_items');
+  
   logger.log('l_total_items :', l_scope, to_char(l_total_items));
 
   for i in 1..l_total_items 
   loop
-    l_counter := i -1;
-    l_subscriber_set(i).email_address := json_value(l_response, '$.members['||l_counter||'].email_address');
-    l_subscriber_set(i).first_name    := json_value(l_response, '$.members['||l_counter||'].merge_fields.FNAME');
-    l_subscriber_set(i).last_name     := json_value(l_response, '$.members['||l_counter||'].merge_fields.LNAME');
-    l_subscriber_set(i).status        := json_value(l_response, '$.members['||l_counter||'].status');
+    l_counter := i - 1;
     
+        --l_subscriber_set(i).email_address := json_value(l_response, '$.members['||l_counter||'].email_address');
+    l_subscriber_set(i).email_address := apex_json.get_varchar2(p_path => 'members[%d].email_address', p0 => i);
+        --l_subscriber_set(i).first_name    := json_value(l_response, '$.members['||l_counter||'].merge_fields.FNAME');
+    l_subscriber_set(i).first_name    := apex_json.get_varchar2(p_path => 'members[%d].merge_fields.FNAME', p0 => i);
+        --l_subscriber_set(i).last_name     := json_value(l_response, '$.members['||l_counter||'].merge_fields.LNAME');
+    l_subscriber_set(i).last_name     := apex_json.get_varchar2(p_path => 'members[%d].merge_fields.LNAME', p0 => i);
+        --l_subscriber_set(i).status        := json_value(l_response, '$.members['||l_counter||'].status');
+    l_subscriber_set(i).status        := apex_json.get_varchar2(p_path => 'members[%d].status', p0 => i);
   end loop;
 
   for i in 1..l_total_items 
@@ -231,16 +250,25 @@ begin
                 , p_https_host  => g_https_host
             );
 
-    l_total_items := json_value(l_response, '$.total_items');
+    --l_total_items := json_value(l_response, '$.total_items');
+    
+    apex_json.parse(p_source => l_response); --first let APEX_JSON parse the clob
+    l_total_items := apex_json.get_number(p_path => 'total_items');
+    
     logger.log('l_total_items :', l_scope, to_char(l_total_items));
 
     for i in 1..l_total_items 
     loop
         l_counter := i -1;
-        l_merge_field_set(i).merge_id      := json_value(l_response, '$.merge_fields['||l_counter||'].merge_id');
-        l_merge_field_set(i).tag           := json_value(l_response, '$.merge_fields['||l_counter||'].tag');
-        l_merge_field_set(i).name          := json_value(l_response, '$.merge_fields['||l_counter||'].name');
-        l_merge_field_set(i).default_value := json_value(l_response, '$.merge_fields['||l_counter||'].default_value');
+        
+        --l_merge_field_set(i).merge_id      := json_value(l_response, '$.merge_fields['||l_counter||'].merge_id');
+        l_merge_field_set(i).merge_id           := apex_json.get_number(p_path => 'merge_fields[%d].merge_id', p0 => i);
+        --l_merge_field_set(i).tag           := json_value(l_response, '$.merge_fields['||l_counter||'].tag');
+        l_merge_field_set(i).tag                := apex_json.get_varchar2(p_path => 'merge_fields[%d].tag', p0 => i);
+        --l_merge_field_set(i).name          := json_value(l_response, '$.merge_fields['||l_counter||'].name');
+        l_merge_field_set(i).name               := apex_json.get_varchar2(p_path => 'merge_fields[%d].name', p0 => i);
+        --l_merge_field_set(i).default_value := json_value(l_response, '$.merge_fields['||l_counter||'].default_value');
+        l_merge_field_set(i).default_value      := apex_json.get_varchar2(p_path => 'merge_fields[%d].default_value', p0 => i);
     end loop;
 
     for i in 1..l_total_items 
@@ -308,8 +336,13 @@ begin
         , p_https_host  => g_https_host
     );
     
-    p_merge_id := json_value(l_response, '$.merge_id');
-    p_tag      := json_value(l_response, '$.tag');
+    apex_json.parse(p_source => l_response); --first let APEX_JSON parse the clob
+    
+    --p_merge_id := json_value(l_response, '$.merge_id');
+    p_merge_id := apex_json.get_number(p_path => 'merge_id');
+    --p_tag      := json_value(l_response, '$.tag');
+    p_tag      := apex_json.get_varchar2(p_path => 'tag');
+    
 
     if p_merge_id is null then
         logger.log_error('Unhandled Error :', l_scope, l_response);
@@ -364,8 +397,10 @@ begin
                 , p_https_host  => g_https_host
             );
 
-    l_confirmation := json_value(l_response, '$.default_value');
+    --l_confirmation := json_value(l_response, '$.default_value');
+    apex_json.parse(p_source => l_response);
     
+    l_confirmation := apex_json.get_varchar2(p_path => 'default_value');
 
     if l_confirmation = p_merge_value then
         p_success := true;
@@ -406,7 +441,12 @@ begin
                 , p_https_host  => g_https_host
             );
     
-    p_template_id := json_value(l_response, '$.id');
+    apex_json.parse(p_source => l_response); --first let APEX_JSON parse the clob
+    
+    --p_template_id := json_value(l_response, '$.id');
+    
+    p_template_id := apex_json.get_varchar2(p_path => 'id');
+    
     logger.log('p_template_id :', l_scope, to_char(p_template_id));
 
   logger.log('END', l_scope);
@@ -440,9 +480,12 @@ begin
                 , p_wallet_path => g_wallet_path
                 , p_https_host  => g_https_host
             );
-
-    l_template_id := json_value(l_response, '$.id');
-
+    
+    apex_json.parse(p_source => l_response); --first let APEX_JSON parse the clob
+    
+    --l_template_id := json_value(l_response, '$.id');
+    l_template_id := apex_json.get_varchar2(p_path => 'id');
+    
     if l_template_id = p_template_id then
         p_success := true;
     else
@@ -488,11 +531,16 @@ begin
                     , p_wallet_path => g_wallet_path
                     , p_https_host  => g_https_host
                 );
-
-    l_campaign_id := json_value(l_response, '$.id');
+    apex_json.parse(p_source => l_response); --first let APEX_JSON parse the clob
+    
+    --l_campaign_id := json_value(l_response, '$.id');
+    l_campaign_id := apex_json.get_varchar2(p_path => 'id');
     logger.log('l_campaign_id :', l_scope, l_campaign_id);
+    
     p_campaign_id := l_campaign_id;
-    p_send_url := json_value(l_response, '$."_links"[3].href');
+    
+    --p_send_url := json_value(l_response, '$."_links"[3].href');
+    p_send_url := apex_json.get_varchar2(p_path => '_links[3].href');
     logger.log('p_send_url :', l_scope, p_send_url);
 
     logger.log('END', l_scope);
@@ -521,7 +569,12 @@ begin
                 , p_wallet_path => g_wallet_path
                 , p_https_host  => g_https_host
             );
-   l_ready := json_value(l_response, '$.is_ready');
+    
+   apex_json.parse(p_source => l_response); --first let APEX_JSON parse the clob
+    
+   --l_ready := json_value(l_response, '$.is_ready');
+   l_ready := apex_json.get_varchar2(p_path => 'is_ready');
+   
    if l_ready = 'true' then
       logger.log('The campaign is ready to send.', l_scope, null, l_params);
       p_ready := true;
@@ -554,7 +607,7 @@ begin
                         , p_password    => g_password
                         , p_wallet_path => g_wallet_path
                         , p_https_host  => g_https_host
-                    );
+                    );                   
     
     if length(l_response) = 0 or l_response is null then
         p_success := true;
@@ -592,26 +645,43 @@ begin
                 , p_wallet_path => g_wallet_path
                 , p_https_host  => g_https_host
             );
-
-    l_total_items := json_value(l_response, '$.total_items');
+            
+    apex_json.parse(p_source => l_response); --first let APEX_JSON parse the clob
+    
+    --l_total_items := json_value(l_response, '$.total_items');
+    l_total_items := apex_json.get_number(p_path => 'total_items');
+    
     logger.log('l_total_items :', l_scope, to_char(l_total_items));
 
     for i in 1..l_total_items 
   loop
     l_counter := i -1;
-    l_campaign_set(i).campaign_id       := json_value(l_response, '$.campaigns['||l_counter||'].id');
-    l_campaign_set(i).emails_sent       := json_value(l_response, '$.campaigns['||l_counter||'].emails_sent');
-    l_send_time                         := json_value(l_response, '$.campaigns['||l_counter||'].send_time');
+    
+    --    l_campaign_set(i).campaign_id       := json_value(l_response, '$.campaigns['||l_counter||'].id');
+    l_campaign_set(i).campaign_id       := apex_json.get_varchar2(p_path => 'campaigns[%d].id', p0 => i);
+    --    l_campaign_set(i).emails_sent       := json_value(l_response, '$.campaigns['||l_counter||'].emails_sent');
+    l_campaign_set(i).emails_sent       := apex_json.get_varchar2(p_path => 'campaigns[%d].emails_sent', p0 => i);
+    --    l_send_time                         := json_value(l_response, '$.campaigns['||l_counter||'].send_time');
+    l_send_time                         := apex_json.get_varchar2(p_path => 'campaigns[%d].send_time', p0 => i);
     l_campaign_set(i).send_time         := to_date(substr(l_send_time,1,instr(l_send_time,'+')-1), 'YYYY-MM-DD"T"HH24:MI:SS');
-    l_campaign_set(i).recipient_list_id := json_value(l_response, '$.campaigns['||l_counter||'].recipients.list_id');
-    l_campaign_set(i).template_id       := json_value(l_response, '$.campaigns['||l_counter||'].settings.template_id');
-    l_campaign_set(i).subject_line      := json_value(l_response, '$.campaigns['||l_counter||'].settings.subject_line');
-    l_campaign_set(i).from_name         := json_value(l_response, '$.campaigns['||l_counter||'].settings.from_name');
-    l_campaign_set(i).opens             := json_value(l_response, '$.campaigns['||l_counter||'].report_summary.opens');
-    l_campaign_set(i).unique_opens      := json_value(l_response, '$.campaigns['||l_counter||'].report_summary.unique_opens');
-    l_campaign_set(i).open_rate         := json_value(l_response, '$.campaigns['||l_counter||'].report_summary.open_rate');
-    l_campaign_set(i).clicks            := json_value(l_response, '$.campaigns['||l_counter||'].report_summary.clicks');
-    l_campaign_set(i).cancel_send       := json_value(l_response, '$.campaigns['||l_counter||']."_links"[4].href');
+    --    l_campaign_set(i).recipient_list_id := json_value(l_response, '$.campaigns['||l_counter||'].recipients.list_id');
+    l_campaign_set(i).recipient_list_id := apex_json.get_varchar2(p_path => 'campaigns[%d].recipients.list_id', p0 => i);
+    --    l_campaign_set(i).template_id       := json_value(l_response, '$.campaigns['||l_counter||'].settings.template_id');
+    l_campaign_set(i).template_id       := apex_json.get_varchar2(p_path => 'campaigns[%d].settings.template_id', p0 => i);
+    --    l_campaign_set(i).subject_line      := json_value(l_response, '$.campaigns['||l_counter||'].settings.subject_line');
+    l_campaign_set(i).subject_line      := apex_json.get_varchar2(p_path => 'campaigns[%d].settings.subject_line', p0 => i);
+    --    l_campaign_set(i).from_name         := json_value(l_response, '$.campaigns['||l_counter||'].settings.from_name');
+    l_campaign_set(i).from_name         := apex_json.get_varchar2(p_path => 'campaigns[%d].settings.from_name', p0 => i);
+    --    l_campaign_set(i).opens             := json_value(l_response, '$.campaigns['||l_counter||'].report_summary.opens');
+    l_campaign_set(i).opens             := apex_json.get_varchar2(p_path => 'campaigns[%d].report_summary.opens', p0 => i);
+    --    l_campaign_set(i).unique_opens      := json_value(l_response, '$.campaigns['||l_counter||'].report_summary.unique_opens');
+    l_campaign_set(i).unique_opens      := apex_json.get_varchar2(p_path => 'campaigns[%d].report_summary.unique_opens', p0 => i);
+    --    l_campaign_set(i).open_rate         := json_value(l_response, '$.campaigns['||l_counter||'].report_summary.open_rate');
+    l_campaign_set(i).open_rate         := apex_json.get_varchar2(p_path => 'campaigns[%d].report_summary.open_rate', p0 => i);
+    --    l_campaign_set(i).clicks            := json_value(l_response, '$.campaigns['||l_counter||'].report_summary.clicks');
+    l_campaign_set(i).clicks            := apex_json.get_varchar2(p_path => 'campaigns[%d].report_summary.clicks', p0 => i);
+    --    l_campaign_set(i).cancel_send       := json_value(l_response, '$.campaigns['||l_counter||']."_links"[4].href');
+    l_campaign_set(i).cancel_send       := apex_json.get_varchar2(p_path => 'campaigns[%d]._links[4].href', p0 => i);
   end loop;
 
   for i in 1..l_total_items 
